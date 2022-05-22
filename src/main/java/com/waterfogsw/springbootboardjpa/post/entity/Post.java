@@ -5,7 +5,6 @@ import com.waterfogsw.springbootboardjpa.user.entity.User;
 import org.springframework.util.Assert;
 
 import javax.persistence.*;
-import javax.validation.constraints.Max;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 
