@@ -1,8 +1,11 @@
 package com.waterfogsw.springbootboardjpa.post.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.waterfogsw.springbootboardjpa.post.controller.dto.PostResponse;
+import com.waterfogsw.springbootboardjpa.post.entity.Post;
 import com.waterfogsw.springbootboardjpa.post.service.PostService;
 import com.waterfogsw.springbootboardjpa.post.util.PostConverter;
+import com.waterfogsw.springbootboardjpa.user.entity.User;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -10,28 +13,38 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.restdocs.AutoConfigureRestDocs;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.mock.mockito.MockBeans;
 import org.springframework.data.jpa.mapping.JpaMetamodelMappingContext;
 import org.springframework.http.MediaType;
+import org.springframework.restdocs.mockmvc.RestDocumentationRequestBuilders;
+import org.springframework.restdocs.payload.JsonFieldType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 import java.util.HashMap;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;
+import static org.springframework.restdocs.payload.PayloadDocumentation.*;
+import static org.springframework.restdocs.request.RequestDocumentation.parameterWithName;
+import static org.springframework.restdocs.request.RequestDocumentation.pathParameters;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = PostApiController.class)
 @MockBeans({
         @MockBean(JpaMetamodelMappingContext.class),
-        @MockBean(PostConverter.class)
 })
+@AutoConfigureRestDocs()
 class PostApiControllerTest {
     private static final String URL = "/api/v1/posts";
+
+    @MockBean
+    private PostConverter postConverter;
 
     @MockBean
     private PostService postService;
@@ -65,8 +78,15 @@ class PostApiControllerTest {
                         .content(content);
 
                 final var response = mockMvc.perform(request);
-                response.andExpect(status().isCreated());
                 verify(postService).addPost(anyLong(), any());
+                response.andExpect(status().isCreated())
+                        .andDo(document("post-add",
+                                requestFields(
+                                        fieldWithPath("title").type(JsonFieldType.STRING).description("게시물 제목"),
+                                        fieldWithPath("content").type(JsonFieldType.STRING).description("게시물 내용"),
+                                        fieldWithPath("userId").type(JsonFieldType.NUMBER).description("작성자 아이디")
+                                )
+                        ));
             }
         }
 
@@ -211,13 +231,23 @@ class PostApiControllerTest {
 
                 final var content = mapper.writeValueAsString(requestMap);
 
-                final var request = MockMvcRequestBuilders.put(URL + "/" + testPostId)
+                final var request = RestDocumentationRequestBuilders.put(URL + "/{id}", testPostId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(content);
 
                 final var response = mockMvc.perform(request);
-                response.andExpect(status().isOk());
                 verify(postService).updatePost(anyLong(), anyLong(), any());
+                response.andExpect(status().isOk())
+                        .andDo(document("post-update",
+                                pathParameters(
+                                        parameterWithName("id").description("게시물 번호")
+                                ),
+                                requestFields(
+                                        fieldWithPath("title").type(JsonFieldType.STRING).description("게시물 제목"),
+                                        fieldWithPath("content").type(JsonFieldType.STRING).description("게시물 내용"),
+                                        fieldWithPath("userId").type(JsonFieldType.NUMBER).description("작성자 아이디")
+                                )
+                        ));
             }
         }
 
@@ -358,12 +388,37 @@ class PostApiControllerTest {
             @Test
             @DisplayName("ok 응답을 반환한다")
             void It_ResponseOk() throws Exception {
-                final var request = MockMvcRequestBuilders.get(URL + "/" + testGetId);
+                final var user = User.builder()
+                        .name("test-username")
+                        .email("test-email")
+                        .build();
 
+                final var post = Post.builder()
+                        .title("test-title")
+                        .content("test-content")
+                        .user(user)
+                        .build();
+
+                given(postService.getOne(eq(1L))).willReturn(post);
+
+                final var postResponse = new PostResponse("test", "test", "test", "test");
+                given(postConverter.toDto(eq(post))).willReturn(postResponse);
+
+                final var request = RestDocumentationRequestBuilders.get(URL + "/{id}", testGetId);
                 final var response = mockMvc.perform(request);
 
-                response.andExpect(status().isOk());
-                verify(postService).getOne(anyLong());
+                response.andExpect(status().isOk())
+                        .andDo(document("post-detail",
+                                pathParameters(
+                                        parameterWithName("id").description("게시물 번호")
+                                ),
+                                responseFields(
+                                        fieldWithPath("title").type(JsonFieldType.STRING).description("게시물 제목"),
+                                        fieldWithPath("content").type(JsonFieldType.STRING).description("게시물 내용"),
+                                        fieldWithPath("userName").type(JsonFieldType.STRING).description("작성자 이름"),
+                                        fieldWithPath("userEmail").type(JsonFieldType.STRING).description("작성자 이메일")
+                                )
+                        ));
             }
         }
 
@@ -399,8 +454,13 @@ class PostApiControllerTest {
 
                 final var response = mockMvc.perform(request);
 
-                response.andExpect(status().isOk());
                 verify(postService).getAll(any());
+                response.andExpect(status().isOk())
+                        .andDo(document("post-list",
+                                responseFields(
+                                        fieldWithPath("[]").type(JsonFieldType.ARRAY).optional().description("게시물 정보")
+                                )
+                        ));
             }
         }
     }
